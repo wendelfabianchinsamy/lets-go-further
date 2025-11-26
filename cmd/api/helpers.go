@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"strconv"
 
@@ -18,4 +20,28 @@ func (app *application) readIdParam(r *http.Request) (int64, error) {
 	}
 
 	return id, nil
+}
+
+// A type for representing our envelope data
+// We will not send data directly to the client but instead wrap the json in another json object
+// Giving it a descriptive name.
+type envelope map[string]any
+
+func (app *application) writeJSON(w http.ResponseWriter, status int, data envelope, headers http.Header) error {
+	js, err := json.MarshalIndent(data, "", "\t")
+	// js, err := json.Marshal(data)
+
+	if err != nil {
+		return err
+	}
+
+	// Header() returns the header map
+	// So we are simply appending headers to the existing header map
+	maps.Copy(w.Header(), headers)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(js)
+
+	return nil
 }
