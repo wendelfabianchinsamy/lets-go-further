@@ -103,6 +103,8 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 		&movie.Version,
 	)
 
+	// so we also check if the error is actually a no rows found error
+	// this way we can send a record not found response
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -115,9 +117,57 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 }
 
 func (m MovieModel) Update(movie *Movie) error {
-	return nil
+	const query = `
+		UPDATE 
+			movies
+		SET 
+			title = $1,
+			year = $2,
+			runtime = $3,
+			genres = $4,
+			version = version + 1
+		WHERE 
+			id = $5
+		RETURNING 
+			version;`
+
+	args := []any{
+		movie.Title,
+		movie.Year,
+		movie.Runtime,
+		pq.Array(movie.Genres),
+		movie.Version,
+	}
+
+	return m.DB.QueryRow(query, args...).Scan(&movie.Version)
 }
 
 func (m MovieModel) Delete(id int64) error {
+	if id < 1 {
+		return ErrRecordNotFound
+	}
+
+	const query = `
+		DELETE FROM
+			movies
+		WHERE
+			id = $1;`
+
+	sqlRes, err := m.DB.Exec(query, id)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := sqlRes.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
 	return nil
 }
