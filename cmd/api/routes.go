@@ -21,7 +21,11 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/v1/healthcheck", app.healthcheckHandler)
 	router.HandlerFunc(http.MethodPost, "/v1/movies", app.createMovieHandler)
 	router.HandlerFunc(http.MethodGet, "/v1/movies/:id", app.getMovieByIdHandler)
-	router.HandlerFunc(http.MethodPut, "/v1/movies/:id", app.updateMovieHandler)
+	// router.HandlerFunc(http.MethodPut, "/v1/movies/:id", app.updateMovieHandler)
+
+	// We change the allowed HTTP verb to patch since we are performing a partial update
+	// i.e. we may not necessarily update the entire record but only parts of it.
+	router.HandlerFunc(http.MethodPatch, "/v1/movies/:id", app.updateMovieHandler)
 	router.HandlerFunc(http.MethodDelete, "/v1/movies/:id", app.deleteMovieHandler)
 
 	// We wrap our router with the panic recovery middleware.

@@ -104,6 +104,7 @@ func (app *application) readJSON(r *http.Request, destination any) error {
 			return fmt.Errorf("body must not be larger than %d bytes", maxBytesError.Limit)
 		// For anything else, return the error message as is.
 		default:
+			app.logger.Info("inside readJSON")
 			return err
 		}
 	}

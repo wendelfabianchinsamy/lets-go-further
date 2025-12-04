@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -62,21 +63,71 @@ func (m MovieModel) Insert(movie *Movie) error {
 	// make it nice and clear *what values are being used where* in the query.
 	args := []any{movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres)}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	// Use the QueryRow() method to execute the sql query on our connection pool
 	// passing in the args slice as a variadic parameter and scanning the system-
 	// generated id, created_at and version values into the movie struct.
-	return m.DB.QueryRow(query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	return m.DB.QueryRowContext(ctx, query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 
 	// You did not have to create an args array of course. We could pass the
 	// placeholder values like so.
 	// return m.DB.QueryRow(query, movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres)).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 }
 
+// func (m MovieModel) Get(id int64) (*Movie, error) {
+// 	if id < 1 {
+// 		return nil, ErrRecordNotFound
+// 	}
+
+// 	const query = `
+// 		SELECT
+// 			id,
+// 			created_at,
+// 			title,
+// 			year,
+// 			runtime,
+// 			genres,
+// 			version
+// 		FROM
+// 			movies
+// 		WHERE
+// 			id = $1;`
+
+// 	var movie Movie
+
+// 	err := m.DB.QueryRow(query, id).Scan(
+// 		&movie.ID,
+// 		&movie.CreatedAt,
+// 		&movie.Title,
+// 		&movie.Year,
+// 		&movie.Runtime,
+// 		pq.Array(&movie.Genres),
+// 		&movie.Version,
+// 	)
+
+// 	// so we also check if the error is actually a no rows found error
+// 	// this way we can send a record not found response
+// 	if err != nil {
+// 		if errors.Is(err, sql.ErrNoRows) {
+// 			return nil, ErrRecordNotFound
+// 		}
+
+// 		return nil, err
+// 	}
+
+// 	return &movie, nil
+// }
+
+// Example to show cancellation of long running sql queries using context.
 func (m MovieModel) Get(id int64) (*Movie, error) {
 	if id < 1 {
 		return nil, ErrRecordNotFound
 	}
 
+	// Add pg_sleep(8) to the select statement such that we wait 8 seconds
+	// before getting the response back from the db.
 	const query = `
 		SELECT
 			id,
@@ -93,7 +144,18 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 
 	var movie Movie
 
-	err := m.DB.QueryRow(query, id).Scan(
+	// Use context.WithTimeout() to create a context.Context which carries a
+	// 3 second timeout deadline.
+	// Note that we're using the empty context.Background() as the parent context.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	// Use defer to make sure we cancel the context before the Get()
+	// method returns
+	defer cancel()
+
+	// Use the QueryRowContext() method to execute the query, passing in the context
+	// with the deadline as the first argument.
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(
 		&movie.ID,
 		&movie.CreatedAt,
 		&movie.Title,
@@ -117,6 +179,10 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 }
 
 func (m MovieModel) Update(movie *Movie) error {
+	// Change the update query to include the version number to avoid data races.
+	// We call this approach optimistic locking.
+	// If we can't find a record with a matching id and version number we will return
+	// an error. Since this means that the record has been updated since it was read.
 	const query = `
 		UPDATE 
 			movies
@@ -128,6 +194,8 @@ func (m MovieModel) Update(movie *Movie) error {
 			version = version + 1
 		WHERE 
 			id = $5
+		AND
+			version = $6
 		RETURNING 
 			version;`
 
@@ -136,10 +204,28 @@ func (m MovieModel) Update(movie *Movie) error {
 		movie.Year,
 		movie.Runtime,
 		pq.Array(movie.Genres),
+		movie.ID,
 		movie.Version,
 	}
 
-	return m.DB.QueryRow(query, args...).Scan(&movie.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&movie.Version)
+
+	if err != nil {
+		// We will return this error if no record was found.
+		// This will mean that since we initially read the record
+		// it was updated and has a new version number and therefore
+		// a data race has occurred.
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrEditConflict
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (m MovieModel) Delete(id int64) error {
@@ -153,7 +239,10 @@ func (m MovieModel) Delete(id int64) error {
 		WHERE
 			id = $1;`
 
-	sqlRes, err := m.DB.Exec(query, id)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	sqlRes, err := m.DB.ExecContext(ctx, query, id)
 
 	if err != nil {
 		return err
