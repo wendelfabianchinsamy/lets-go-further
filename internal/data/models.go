@@ -5,9 +5,13 @@ import (
 	"errors"
 )
 
-// Define a custom ErrRecordNotFound error. We'll return this from our Get() method when
-// looking up a movie that doesn't exist in our database.
+// Define a custom ErrRecordNotFound error for when we do not find a record
+// in the database.
 var ErrRecordNotFound = errors.New("record not found")
+
+// Define a custom ErrEditConflict error for when we have a data race when
+// attempting to mutate a record (update or delete).
+var ErrEditConflict = errors.New("edit conflict")
 
 // Create a Models struct which wraps the MovieModel. We'll add other models to this
 // like a UserModel and PermissionModel as our build progresses.
