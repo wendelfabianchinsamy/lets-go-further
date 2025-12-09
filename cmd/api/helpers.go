@@ -7,10 +7,18 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/wendelfabianchinsamy/lets-go-further/internal/validator"
 )
+
+// A type for representing our envelope data
+// We will not send data directly to the client but instead wrap the json in another json object
+// Giving it a descriptive name.
+type envelope map[string]any
 
 func (app *application) readIdParam(r *http.Request) (int64, error) {
 	params := httprouter.ParamsFromContext(r.Context())
@@ -23,11 +31,6 @@ func (app *application) readIdParam(r *http.Request) (int64, error) {
 
 	return id, nil
 }
-
-// A type for representing our envelope data
-// We will not send data directly to the client but instead wrap the json in another json object
-// Giving it a descriptive name.
-type envelope map[string]any
 
 func (app *application) writeJSON(w http.ResponseWriter, status int, data envelope, headers http.Header) error {
 	js, err := json.MarshalIndent(data, "", "\t")
@@ -110,4 +113,50 @@ func (app *application) readJSON(r *http.Request, destination any) error {
 	}
 
 	return nil
+}
+
+// The readString() helper returns a string value from the query string or provided default value
+// if no matching key could be found.
+func (app *application) readString(qs url.Values, key string, defaultValue string) string {
+	s := qs.Get(key)
+
+	if s == "" {
+		return defaultValue
+	}
+
+	return s
+}
+
+// The readCSV() helper reads a string value from the query string and then splits it
+// into a slice on the comma character. If no matching key could be found it returns
+// the provided default value
+func (app *application) readCSV(qs url.Values, key string, defaultValue []string) []string {
+	csv := qs.Get(key)
+
+	if csv == "" {
+		return defaultValue
+	}
+
+	return strings.Split(csv, ",")
+}
+
+// The readInt() helper reads a string value from the query string and converts that value
+// into an int. If the conversion fails we add a validation error to the pointer validation
+// instance and we return the provided default value. If parsing was successful then we return
+// the parsed int.
+func (app *application) readInt(qs url.Values, key string, defaultValue int, v *validator.Validator) int {
+	s := qs.Get(key)
+
+	if s == "" {
+		return defaultValue
+	}
+
+	i, err := strconv.Atoi(s)
+
+	if err != nil {
+		v.AddError(key, "must be an integer value")
+		return defaultValue
+	}
+
+	return i
 }

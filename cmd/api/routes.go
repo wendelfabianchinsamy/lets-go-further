@@ -27,6 +27,7 @@ func (app *application) routes() http.Handler {
 	// i.e. we may not necessarily update the entire record but only parts of it.
 	router.HandlerFunc(http.MethodPatch, "/v1/movies/:id", app.updateMovieHandler)
 	router.HandlerFunc(http.MethodDelete, "/v1/movies/:id", app.deleteMovieHandler)
+	router.HandlerFunc(http.MethodGet, "/v1/movies", app.listMoviesHandler)
 
 	// We wrap our router with the panic recovery middleware.
 	// This will ensure that the middleware runs for every one of our API endpoints.
