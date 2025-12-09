@@ -5,6 +5,8 @@ import (
 	"net/http"
 )
 
+// This is the middleware pattern!!!
+
 func (app *application) recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Create a deffered function which will alway be run in the event of a panic
